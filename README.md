@@ -26,7 +26,7 @@
 
 A modern Security Operations Center doesn't just generate alerts — it **enriches** them. Raw IDS alerts tell you *what* happened, but analysts need context: Is this IP known-malicious? Has this domain been seen in other campaigns? How does this alert relate to others in the same time window? **Threat intelligence enrichment** answers these questions, and automation is the only way to do it at scale.
 
-This project is the automation layer that sits on top of the [Suricata IDS Rules project](https://github.com/YOUR_USERNAME/suricata-ids-rules) — taking raw EVE JSON alerts, extracting IOCs, querying multiple threat intelligence sources concurrently, scoring risk, and producing the kind of enriched incident reports that analysts actually use. It demonstrates production Python patterns employers look for: async concurrency, Pydantic data validation, abstract base classes for extensibility, comprehensive CLI design with Rich terminal output, and test coverage.
+This project is the automation layer that sits on top of the [Suricata IDS Rules project](https://github.com/jesse12-21/suricata-ids-rules) — taking raw EVE JSON alerts, extracting IOCs, querying multiple threat intelligence sources concurrently, scoring risk, and producing the kind of enriched incident reports that analysts actually use. It demonstrates production Python patterns employers look for: async concurrency, Pydantic data validation, abstract base classes for extensibility, comprehensive CLI design with Rich terminal output, and test coverage.
 
 ### What This Project Covers
 
@@ -701,7 +701,7 @@ curl -k https://splunk.local:8088/services/collector/event \
   -d @enriched.json
 ```
 
-This closes the loop with the [Splunk SIEM Analysis project](https://github.com/YOUR_USERNAME/splunk-siem-analysis) — Suricata detects, this toolkit enriches, Splunk correlates.
+This closes the loop with the [Splunk SIEM Analysis project](https://github.com/jesse12-21/splunk-siem-analysis) — Suricata detects, this toolkit enriches, Splunk correlates.
 
 ---
 
@@ -768,10 +768,10 @@ This project demonstrates production Python skills through six progressive secti
 
 This toolkit is the automation layer connecting the detection and analysis projects:
 
-- **Input:** Suricata EVE JSON from the [Suricata IDS Rules](https://github.com/YOUR_USERNAME/suricata-ids-rules) project
-- **Output:** Enriched JSON compatible with the [Splunk SIEM Analysis](https://github.com/YOUR_USERNAME/splunk-siem-analysis) project
-- **Context:** Uses packet-level insights from the [Wireshark Threat Detection](https://github.com/YOUR_USERNAME/wireshark-threat-detection) project to inform IOC extraction
-- **Testing:** Can process traffic captured during the [Nmap Network Recon](https://github.com/YOUR_USERNAME/nmap-network-recon) project
+- **Input:** Suricata EVE JSON from the [Suricata IDS Rules](https://github.com/jesse12-21/suricata-ids-rules) project
+- **Output:** Enriched JSON compatible with the [Splunk SIEM Analysis](https://github.com/jesse12-21/splunk-siem-analysis) project
+- **Context:** Uses packet-level insights from the [Wireshark Threat Detection](https://github.com/jesse12-21/wireshark-threat-detection) project to inform IOC extraction
+- **Testing:** Can process traffic captured during the [Nmap Network Recon](https://github.com/jesse12-21/nmap-network-recon) project
 
 ---
 
@@ -779,10 +779,10 @@ This toolkit is the automation layer connecting the detection and analysis proje
 
 ### 🔗 Related Projects
 
-[![Wireshark](https://img.shields.io/badge/Wireshark_Threat_Detection-1679A7?style=for-the-badge&logo=wireshark&logoColor=white)](https://github.com/YOUR_USERNAME/wireshark-threat-detection)
-[![Nmap](https://img.shields.io/badge/Nmap_Network_Scanning-005571?style=for-the-badge&logo=gnu-bash)](https://github.com/YOUR_USERNAME/nmap-network-recon)
-[![Splunk](https://img.shields.io/badge/Splunk_SIEM_Analysis-000000?style=for-the-badge&logo=splunk)](https://github.com/YOUR_USERNAME/splunk-siem-analysis)
-[![Suricata](https://img.shields.io/badge/Suricata_IDS_Rules-EF3B2D?style=for-the-badge&logo=argo)](https://github.com/YOUR_USERNAME/suricata-ids-rules)
+[![Wireshark](https://img.shields.io/badge/Wireshark_Threat_Detection-1679A7?style=for-the-badge&logo=wireshark&logoColor=white)](https://github.com/jesse12-21/wireshark-threat-detection)
+[![Nmap](https://img.shields.io/badge/Nmap_Network_Scanning-005571?style=for-the-badge&logo=gnu-bash)](https://github.com/jesse12-21/nmap-network-recon)
+[![Splunk](https://img.shields.io/badge/Splunk_SIEM_Analysis-000000?style=for-the-badge&logo=splunk)](https://github.com/jesse12-21/splunk-siem-analysis)
+[![Suricata](https://img.shields.io/badge/Suricata_IDS_Rules-EF3B2D?style=for-the-badge&logo=argo)](https://github.com/jesse12-21/suricata-ids-rules)
 
 <br>
 
