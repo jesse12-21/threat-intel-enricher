@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import ClassVar
 
 import aiohttp
 
-from enricher.models import EnrichmentResult, IOC, IOCType
+from enricher.models import IOC, EnrichmentResult, IOCType
 
 
 class EnrichmentError(Exception):
@@ -29,7 +30,7 @@ class BaseEnricher(ABC):
     """
 
     name: str = ""
-    supported_ioc_types: list[IOCType] = []
+    supported_ioc_types: ClassVar[list[IOCType]] = []
 
     def __init__(self, session: aiohttp.ClientSession) -> None:
         self.session = session

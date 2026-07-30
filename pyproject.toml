@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [
-    { name = "Your Name", email = "you@example.com" }
+    { name = "jesse12-21" }
 ]
 keywords = ["security", "threat-intelligence", "soc", "siem", "suricata", "automation"]
 classifiers = [

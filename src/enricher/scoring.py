@@ -6,8 +6,7 @@ a weighted scoring algorithm that rewards corroboration across sources.
 """
 from __future__ import annotations
 
-from enricher.models import EnrichmentResult, IOC, RiskScore, Severity
-
+from enricher.models import IOC, EnrichmentResult, RiskScore, Severity
 
 # Source weights reflect data quality and precision:
 #   - Curated sources (URLhaus) score slightly higher than crowd-sourced
@@ -18,6 +17,13 @@ SOURCE_WEIGHTS: dict[str, float] = {
     "urlhaus": 1.2,
     "otx": 1.0,
     "virustotal": 1.3,
+    # CISA KEV is authoritative rather than crowd-sourced: an entry means a
+    # government body has confirmed in-the-wild exploitation. It carries the
+    # highest weight in the set for that reason.
+    "cisa_kev": 1.5,
+    # EPSS is a forecast rather than an observation, so it is weighted below
+    # the confirmed-fact sources but above pure community reporting.
+    "epss": 1.1,
 }
 
 # Severity bands mapping score → severity label
@@ -86,7 +92,7 @@ def score_ioc(ioc: IOC, enrichments: list[EnrichmentResult]) -> RiskScore:
         corroboration_multiplier = 1.0 + (0.15 * (malicious_count - 1))
         base_score *= corroboration_multiplier
 
-    final_score = min(100, max(0, int(round(base_score))))
+    final_score = min(100, max(0, round(base_score)))
 
     return RiskScore(
         ioc=ioc,

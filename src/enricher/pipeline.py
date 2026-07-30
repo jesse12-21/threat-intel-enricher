@@ -10,7 +10,7 @@ import logging
 from collections import defaultdict
 
 from enricher.enrichers.base import BaseEnricher, EnrichmentError, RateLimitError
-from enricher.models import Alert, EnrichmentResult, IOC, RiskScore
+from enricher.models import IOC, Alert, EnrichmentResult, RiskScore
 
 logger = logging.getLogger(__name__)
 

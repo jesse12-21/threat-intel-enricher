@@ -5,14 +5,13 @@ stakeholders or embedding in ticketing systems that render HTML.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from jinja2 import Environment, select_autoescape
 
 from enricher.models import AttackCampaign, RiskScore, Severity
 from enricher.reporters.base import BaseReporter
-
 
 SEVERITY_COLORS = {
     Severity.CRITICAL: "#dc2626",
@@ -284,7 +283,7 @@ class HTMLReporter(BaseReporter):
         campaigns: list[AttackCampaign],
     ) -> str:
         return self.template.render(
-            generated_at=datetime.now(timezone.utc),
+            generated_at=datetime.now(UTC),
             campaigns=campaigns,
             top_iocs=scores[:30],
             stats=_calculate_stats(scores, campaigns),

@@ -9,12 +9,13 @@ API docs: https://otx.alienvault.com/api
 from __future__ import annotations
 
 import logging
+from typing import Any, ClassVar
 
 import aiohttp
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from enricher.enrichers.base import BaseEnricher, EnrichmentError, RateLimitError
-from enricher.models import EnrichmentResult, IOC, IOCType
+from enricher.models import IOC, EnrichmentResult, IOCType
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ class OTXEnricher(BaseEnricher):
     """Enricher for community threat intel via AlienVault OTX."""
 
     name = "otx"
-    supported_ioc_types = [
+    supported_ioc_types: ClassVar[list[IOCType]] = [
         IOCType.IP,
         IOCType.DOMAIN,
         IOCType.URL,
@@ -43,31 +44,40 @@ class OTXEnricher(BaseEnricher):
         retry=retry_if_exception_type(aiohttp.ClientError),
         reraise=True,
     )
+    async def _fetch(self, ioc: IOC) -> dict[str, Any] | None:
+        """Perform the HTTP request, letting transport errors propagate.
+
+        The retry decorator belongs here rather than on enrich(). An earlier
+        version decorated enrich() while catching aiohttp.ClientError inside
+        it, so the exception never escaped for tenacity to observe and the
+        retry never fired — one attempt was made, not three.
+
+        Returns None on 404, which OTX uses to mean "no pulses recorded".
+        That is an absence of data rather than an error, and it is not
+        evidence that the indicator is clean.
+        """
+        url = self._build_url(ioc)
+        headers = {"X-OTX-API-KEY": self.api_key}
+
+        async with self.session.get(url, headers=headers) as response:
+            if response.status == 429:
+                raise RateLimitError(f"OTX rate limit hit for {ioc.value}")
+            if response.status == 401:
+                raise EnrichmentError("OTX API key is invalid")
+            if response.status == 404:
+                return None
+            response.raise_for_status()
+            data: dict[str, Any] = await response.json()
+            return data
+
     async def enrich(self, ioc: IOC) -> EnrichmentResult | None:
         if not self.supports(ioc):
             return None
 
-        url = self._build_url(ioc)
-        headers = {"X-OTX-API-KEY": self.api_key}
-
         try:
-            async with self.session.get(url, headers=headers) as response:
-                if response.status == 429:
-                    raise RateLimitError(f"OTX rate limit hit for {ioc.value}")
-                if response.status == 401:
-                    raise EnrichmentError("OTX API key is invalid")
-                if response.status == 404:
-                    # No pulses for this IOC — not necessarily clean, just no data
-                    return EnrichmentResult(
-                        ioc=ioc,
-                        source=self.name,
-                        malicious=False,
-                        confidence=0.0,
-                    )
-                response.raise_for_status()
-                data = await response.json()
+            data = await self._fetch(ioc)
         except aiohttp.ClientError as e:
-            logger.warning("OTX request failed for %s: %s", ioc.value, e)
+            logger.warning("OTX request failed for %s after retries: %s", ioc.value, e)
             return EnrichmentResult(
                 ioc=ioc,
                 source=self.name,
@@ -76,14 +86,25 @@ class OTXEnricher(BaseEnricher):
                 error=str(e),
             )
 
+        if data is None:
+            # 404 — no pulses recorded for this indicator.
+            return EnrichmentResult(
+                ioc=ioc,
+                source=self.name,
+                malicious=False,
+                confidence=0.0,
+            )
+
         pulse_info = data.get("pulse_info", {})
         pulse_count = pulse_info.get("count", 0)
 
-        # More pulses = more community reports = higher confidence of maliciousness
-        # Scale: 1 pulse -> 0.3, 5 pulses -> 0.7, 10+ pulses -> 1.0
+        # More pulses means more independent community reports. The scale is
+        # deliberately shallow: OTX pulse quality varies enormously, so a high
+        # count is suggestive rather than conclusive.
+        # 1 pulse -> 0.3, 5 pulses -> 0.7, 8+ pulses -> 1.0
         confidence = min(1.0, pulse_count * 0.1 + 0.2) if pulse_count > 0 else 0.0
 
-        categories = []
+        categories: list[str] = []
         for pulse in pulse_info.get("pulses", [])[:5]:
             if isinstance(pulse, dict) and "tags" in pulse:
                 categories.extend(pulse["tags"][:3])
@@ -93,7 +114,7 @@ class OTXEnricher(BaseEnricher):
             source=self.name,
             malicious=pulse_count > 0,
             confidence=confidence,
-            categories=list(set(categories))[:10],
+            categories=sorted(set(categories))[:10],
             reference_url=f"https://otx.alienvault.com/indicator/{ioc.type.value}/{ioc.value}",
             raw_response={"pulse_count": pulse_count, "pulse_info": pulse_info},
         )

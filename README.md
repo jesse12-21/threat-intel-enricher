@@ -2,13 +2,16 @@
 
 # 🐍 Threat Intelligence Enricher & Alert Triage Pipeline
 
-### Python-Powered SOC Automation — From Raw IDS Alerts to Enriched Intelligence Reports
+### Python SOC Automation — IDS Alerts and Scan Findings to Scored, Shareable Intelligence
 
 [![Python](https://img.shields.io/badge/Python_3.12-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Async](https://img.shields.io/badge/AsyncIO-Concurrent_Enrichment-00ADD8?style=for-the-badge&logo=lightning&logoColor=white)](https://docs.python.org/3/library/asyncio.html)
 [![Pydantic](https://img.shields.io/badge/Pydantic_v2-Data_Validation-E92063?style=for-the-badge&logo=pydantic&logoColor=white)](https://docs.pydantic.dev/)
-[![Tests](https://img.shields.io/badge/Tests-pytest-0A9EDC?style=for-the-badge&logo=pytest&logoColor=white)](https://pytest.org/)
-[![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
+[![Tests](https://img.shields.io/badge/Tests-102_passing-0A9EDC?style=for-the-badge&logo=pytest&logoColor=white)](https://pytest.org/)
+[![Coverage](https://img.shields.io/badge/Coverage-89%25-brightgreen?style=for-the-badge)](.github/workflows/validate.yml)
+[![mypy](https://img.shields.io/badge/mypy-strict-2A6DB2?style=for-the-badge)](pyproject.toml)
+[![STIX](https://img.shields.io/badge/STIX_2.1-Export-FF6F00?style=for-the-badge)](src/enricher/reporters/stix_reporter.py)
+[![Validate](https://img.shields.io/github/actions/workflow/status/jesse12-21/threat-intel-enricher/validate.yml?branch=main&style=for-the-badge&label=CI)](../../actions/workflows/validate.yml)
 
 <br>
 
@@ -107,33 +110,58 @@ The toolkit implements a classic ETL pipeline pattern: **Extract → Enrich → 
 +--------------------------------------------------------------------+
 ```
 
-### Project Structure
+### 📂 Repository Structure
+
+<div align="center">
+<img src="assets/repo-structure.png" alt="Repository structure diagram. Left panel lists the file tree: README, LICENSE, pyproject.toml, .github/workflows, assets, src/enricher with enrichers, ingesters and reporters, tests, examples, and docs — with files added in the July 2026 refresh highlighted in green and revised files in amber. Right panel describes each component's purpose." width="900">
+</div>
+
+<br>
+
+<details>
+<summary><strong>Text version (click to expand)</strong></summary>
 
 ```
 threat-intel-enricher/
 ├── src/enricher/
-│   ├── cli.py                    # Click-based CLI with Rich output
-│   ├── config.py                 # Settings and secrets management
-│   ├── models.py                 # Pydantic data models
-│   ├── scoring.py                # Risk scoring algorithms
-│   ├── correlator.py             # Alert correlation logic
-│   ├── ingesters/
-│   │   ├── base.py               # Abstract ingester interface
-│   │   └── suricata.py           # Suricata EVE JSON parser
+│   ├── cli.py                          # Click CLI with Rich output
+│   ├── config.py                       # Settings and secrets
+│   ├── models.py                       # Pydantic models (IOC, Alert, RiskScore)
+│   ├── pipeline.py                     # Async orchestration, dedup, fan-out
+│   ├── scoring.py                      # Weighted multi-source risk scoring
+│   ├── correlator.py                   # Attack campaign clustering
 │   ├── enrichers/
-│   │   ├── base.py               # Abstract enricher interface
-│   │   ├── abuseipdb.py          # AbuseIPDB API client
-│   │   ├── urlhaus.py            # URLhaus API client (no key)
-│   │   └── otx.py                # AlienVault OTX client
+│   │   ├── base.py                     # BaseEnricher ABC
+│   │   ├── abuseipdb.py                # IP reputation
+│   │   ├── otx.py                      # Community pulses
+│   │   ├── urlhaus.py                  # Malicious URLs (Auth-Key required)
+│   │   ├── cisa_kev.py                 # NEW — confirmed exploited CVEs
+│   │   └── epss.py                     # NEW — exploitation probability
+│   ├── ingesters/
+│   │   ├── base.py                     # BaseIngester ABC
+│   │   ├── suricata.py                 # Suricata EVE JSON
+│   │   └── nmap_cim.py                 # NEW — Nmap CIM JSON scan output
 │   └── reporters/
-│       ├── base.py               # Abstract reporter interface
-│       ├── markdown_reporter.py  # Jinja2 Markdown generator
-│       └── html_reporter.py      # Jinja2 HTML generator
-├── tests/                        # pytest test suite
-├── examples/                     # Sample inputs and outputs
-├── pyproject.toml                # Modern Python packaging
-└── requirements.txt              # Dependency lock
+│       ├── base.py                     # BaseReporter ABC
+│       ├── markdown_reporter.py        # Analyst-readable Markdown
+│       ├── html_reporter.py            # Styled HTML report
+│       └── stix_reporter.py            # NEW — STIX 2.1 bundles
+├── tests/                              # 102 tests, 89% coverage
+│   ├── conftest.py                     # NEW — FakeSession aiohttp mock
+│   ├── test_enrichers.py               # NEW — incl. both bug regressions
+│   ├── test_pipeline_ingest_report.py  # NEW — pipeline, ingesters, STIX
+│   ├── test_cli_reporters.py           # NEW — CLI and reporters
+│   ├── test_models.py
+│   ├── test_scoring.py
+│   └── test_correlator.py
+├── .github/workflows/validate.yml      # NEW — CI with 85% coverage gate
+├── examples/sample_suricata_eve.json
+├── docs/known-limitations.md           # NEW — tested findings and gaps
+├── .env.example
+└── pyproject.toml
 ```
+
+</details>
 
 ---
 
@@ -518,9 +546,13 @@ enricher pipeline \
 | Source | IOC Types | API Key Required | Rate Limit (Free) |
 |---|---|---|---|
 | **AbuseIPDB** | IPv4 | Yes | 1,000/day |
-| **URLhaus** (abuse.ch) | URLs, domains | No | Reasonable use |
+| **URLhaus** (abuse.ch) | URLs, domains | **Yes** — mandatory since 2025-06-30 | Fair use |
 | **AlienVault OTX** | IPs, domains, URLs, hashes | Yes | 10,000/hour |
+| **CISA KEV** | CVEs | No | None (public JSON catalog) |
+| **EPSS** (FIRST) | CVEs | No | None documented |
 | **Extensible** | Add your own | — | Implement `BaseEnricher` |
+
+> **On the URLhaus row.** This table previously said `API Key Required: No`. abuse.ch made the `Auth-Key` header mandatory across URLhaus, ThreatFox, and MalwareBazaar on 30 June 2025, and the enricher had been receiving 401 on every call since. The key is free from [auth.abuse.ch](https://auth.abuse.ch/) and works across all three services. See [Part 10](#part-10---correctness-and-ci).
 
 ---
 
@@ -705,6 +737,188 @@ This closes the loop with the [Splunk SIEM Analysis project](https://github.com/
 
 ---
 
+## Part 7 - Vulnerability Intelligence: KEV and EPSS
+
+Parts 4 and 5 enrich network indicators — IPs, domains, URLs, hashes. This section adds a different kind of indicator: the CVE.
+
+The distinction matters because reputation and vulnerability intelligence answer different questions. Reputation tells you whether an address has behaved badly. Vulnerability intelligence tells you whether the software you are running is being attacked.
+
+### Three questions, three sources
+
+| Source | Question | Nature |
+|---|---|---|
+| **CVSS** | How bad would it be? | Severity |
+| **CISA KEV** | Has it actually happened? | Confirmed fact |
+| **EPSS** | Will it happen soon? | Forecast |
+
+Ranking by CVSS alone treats a 9.8 with an EPSS score of 0.0004 the same as a 7.5 with an EPSS of 0.87. The second is far more likely to be used against you this month. Neither is visible from severity.
+
+### `cisa_kev.py`
+
+The Known Exploited Vulnerabilities catalog is CISA's authoritative list of vulnerabilities with confirmed in-the-wild exploitation. Public JSON, no key, no rate limit.
+
+```python
+name = "cisa_kev"
+supported_ioc_types: ClassVar[list[IOCType]] = [IOCType.CVE]
+```
+
+Two implementation points worth explaining:
+
+**The catalog is fetched once, not per indicator.** It is roughly 1,500 entries, and the pipeline enriches concurrently — so without a guard, a batch of CVEs would each trigger their own download of the same document. An `asyncio.Lock` guards the cached load. `test_kev_catalog_fetched_once_across_many_cves` asserts a single HTTP call across five indicators.
+
+**Confidence is 1.0, not scaled.** KEV membership is binary and authoritative: a government body has confirmed exploitation. There is no partial credit to express. It carries the highest source weight in scoring (1.5) for the same reason.
+
+Absence from KEV is explicitly *not* treated as evidence of safety — the catalog records confirmed exploitation, not all exploitable vulnerabilities.
+
+### `epss.py`
+
+The Exploit Prediction Scoring System, maintained by FIRST, estimates the probability a vulnerability will be exploited within 30 days. Public API, no key.
+
+EPSS probabilities are heavily skewed — the median CVE scores well under 0.01. The 0.10 threshold used here places a vulnerability in roughly the top few percent by predicted exploitation, which is where it stops being a backlog item.
+
+The score maps directly onto `confidence`, since both are 0–1 estimates of the same underlying question. EPSS is weighted at 1.1 — above pure community reporting, below confirmed-fact sources, because it is a forecast.
+
+A miss is treated as unknown rather than safe: an unscored CVE is usually too new to have been scored.
+
+---
+
+## Part 8 - STIX 2.1 Export
+
+Markdown and HTML reports are for humans. Without a machine-readable format, enrichment output is a dead end — an analyst reads the report and retypes indicators somewhere else.
+
+**STIX 2.1** is the OASIS standard for threat intelligence interchange and what MISP, OpenCTI, Anomali, and commercial TIPs consume. [`reporters/stix_reporter.py`](src/enricher/reporters/stix_reporter.py) emits bundles containing:
+
+| Object | Purpose |
+|---|---|
+| `identity` | The producing tool, with a stable ID across runs |
+| `indicator` | One per scored IOC, with a STIX pattern and confidence |
+| `note` | The enrichment evidence behind each score |
+
+```json
+{
+  "type": "indicator",
+  "spec_version": "2.1",
+  "pattern": "[ipv4-addr:value = '45.227.255.206']",
+  "pattern_type": "stix",
+  "confidence": 95,
+  "labels": ["botnet", "ssh-bruteforce"]
+}
+```
+
+### Design decisions worth stating
+
+**Only actionable indicators are exported by default.** A bundle full of INFO-severity indicators dilutes a TIP feed and trains analysts to ignore it. `actionable_only=True` filters to medium and above.
+
+**The identity ID is deterministic.** STIX consumers deduplicate on ID, so a fresh UUID each run would create a new "producer" in the TIP on every execution. A UUID5 over a fixed namespace keeps it stable — asserted by `test_stix_identity_id_is_stable_across_runs`.
+
+**Evidence travels with the indicator.** A bare indicator carrying a score is unauditable. The `note` object records which source said what, so a downstream analyst can judge the verdict rather than inherit it.
+
+**Campaigns are deliberately not serialised.** STIX models a campaign as an SDO carrying attribution semantics this pipeline does not establish. Emitting under-evidenced campaign objects into a shared TIP is worse than omitting them.
+
+Scope, stated plainly: this emits STIX and does not consume it, and does not implement TAXII. Bundles can be pushed to an existing TAXII endpoint or imported directly. See [`docs/known-limitations.md`](docs/known-limitations.md).
+
+---
+
+## Part 9 - Pipeline Integration
+
+This is the enrichment layer of a five-repository pipeline. It now ingests from two sources.
+
+```
+   suricata-ids-rules            nmap-network-recon
+     EVE JSON alerts               CIM JSON scan output
+            │                              │
+            ▼                              ▼
+              threat-intel-enricher
+         enrich → score → STIX 2.1 bundle
+                       │
+                       ▼
+              splunk-siem-analysis
+```
+
+### Suricata EVE JSON
+
+The original ingester. Alerts carry source and destination IPs, DNS queries, and HTTP hostnames — all enrichable against reputation sources.
+
+### Nmap CIM JSON — new
+
+[`ingesters/nmap_cim.py`](src/enricher/ingesters/nmap_cim.py) consumes the output of the recon project's parser:
+
+```bash
+python3 parsers/nmap_to_siem.py scan.xml --format json > scan.json
+enricher pipeline --source scan.json
+```
+
+**A port scan is not an alert.** Nothing has attacked anything; what a scan produces is *attack surface*. Feeding that surface through the same pipeline lets one question be asked across both inputs: which of the things I can see are things an attacker is currently exploiting?
+
+That question is answered by the CVE enrichers rather than the reputation ones, which is why this ingester extracts two indicator types — the discovered host's IP, and any CVE identifiers embedded in service version strings by Nmap's vulners script.
+
+Scan findings are mapped to `severity=3` deliberately. Raising it would let attack surface outrank actual IDS alerts in scoring.
+
+**One subtlety worth knowing:** Python's `ipaddress` module classifies RFC 5737 documentation ranges as private, so `198.51.100.0/24` and friends are correctly skipped as non-routable. Sample data using those ranges produces no IP indicators, which is surprising until you know it. Asserted in `test_documentation_ranges_are_not_enrichable`.
+
+---
+
+## Part 10 - Correctness and CI
+
+The toolchain was configured from the start — ruff, mypy strict, pytest with coverage — and nothing enforced it. That gap is what this section closes, and what it found is instructive.
+
+### What running the toolchain revealed
+
+| Check | Before | After |
+|---|---|---|
+| `pytest` | 29 passed | **102 passed** |
+| `ruff check` | **47 errors** | clean |
+| `mypy --strict` | clean | clean (23 files) |
+| Coverage | **23%** | **89%** |
+
+mypy strict passing across the whole package was already true and is genuinely uncommon. The rest was aspiration.
+
+The coverage *distribution* mattered more than the number:
+
+```
+models.py        99%
+correlator.py    97%
+scoring.py       91%
+everything else   0%
+```
+
+The three tested modules were the three pure-logic ones. Every module touching I/O — all enrichers, the ingester, the pipeline, both reporters, the CLI, config — had no tests. That is the ordinary shape of a suite written without HTTP mocking, and it is exactly where the bugs were.
+
+### Two bugs the tests found
+
+**The retry decorator never retried.** Every enricher carried `@retry(stop_after_attempt(3))` on `enrich()` while `enrich()` caught `aiohttp.ClientError` internally. Tenacity only retries on exceptions that *escape* the decorated function, so the exception was swallowed before it could be observed. Measured:
+
+```
+before:  HTTP attempts made : 1
+after:   HTTP attempts made : 3
+```
+
+A transient blip produced a permanent failure result, and the backoff never ran. Fixed by splitting the request into a `_fetch()` that carries the decorator and lets errors propagate.
+
+**The URLhaus enricher had been returning 401 for over a year.** abuse.ch made the `Auth-Key` header mandatory on 30 June 2025. The enricher sent no headers at all — and `.env.example`, `config.py`, and this README's source table all asserted no key was needed. One of three sources was silently dead while every artifact in the repository said otherwise.
+
+The general lesson: **a third-party API is a dependency that changes without a version bump.**
+
+### What CI enforces
+
+[`.github/workflows/validate.yml`](.github/workflows/validate.yml):
+
+| Job | Checks |
+|---|---|
+| **test** | pytest across Python 3.11 and 3.12, with an 85% coverage gate |
+| **lint** | `ruff check`, `mypy --strict`, and a placeholder scan |
+| **contract** | Every enricher, ingester, and reporter implements its base class; CLI is invocable |
+
+The contract job exists because a plugin architecture only holds if components actually conform. During this work my first STIX reporter used `generate(scores, path)` while `BaseReporter` requires `render(scores, campaigns) -> str` — it type-checked in isolation and would have broken the CLI's format selection.
+
+### The gap that remains
+
+**Every enricher test mocks the HTTP layer.** The suite proves the code handles a given response shape, not that the API still returns it. The URLhaus break is precisely the case where mocks kept passing while production was broken.
+
+Closing it needs contract tests against live APIs on a schedule, which means credentials in CI — a deliberate omission for a public repository rather than an oversight, but a real gap. It is recorded in [`docs/known-limitations.md`](docs/known-limitations.md) alongside the rest.
+
+---
+
 ## 🧪 Testing
 
 The project ships with a **29-test pytest suite** covering correlation logic, scoring algorithms, severity band boundaries, and Pydantic model validation:
@@ -751,7 +965,7 @@ pytest -v
 
 ## 📚 Summary
 
-This project demonstrates production Python skills through six progressive sections:
+This project demonstrates production Python skills through ten progressive sections:
 
 1. **Setup & Project Structure** — Modern Python packaging with `pyproject.toml`, virtual environments, and `.env`-based secrets management
 2. **Architecture & Design** — Clean separation of concerns using abstract base classes, Pydantic data models for boundary validation, and the strategy pattern for pluggable components
@@ -759,10 +973,14 @@ This project demonstrates production Python skills through six progressive secti
 4. **Concurrent Enrichment** — Async/await integration with AbuseIPDB, URLhaus, and AlienVault OTX APIs, with proper rate limiting, retry logic, and error handling
 5. **Risk Scoring & Correlation** — Weighted multi-source scoring algorithm with corroboration bonuses, plus time-window-based alert correlation to surface attack campaigns
 6. **Report Generation** — Jinja2-templated Markdown and HTML reports for analyst consumption, plus JSON output for SIEM integration
+7. **Vulnerability Intelligence** — Added CISA KEV and FIRST EPSS enrichers covering CVE indicators, answering "is this confirmed exploited" and "how likely is it to be exploited soon" — questions CVSS severity cannot answer. The KEV catalog is fetched once behind an asyncio lock rather than per indicator
+8. **STIX 2.1 Export** — Machine-readable bundles with stable identity IDs, escaped patterns, and enrichment evidence attached as notes, so output is importable into MISP, OpenCTI, or any TAXII-compatible platform instead of being a dead end
+9. **Pipeline Integration** — Added an ingester for the recon project's CIM-normalised scan output, extracting both host IPs and CVE identifiers embedded in service version strings, so attack surface and IDS alerts flow through one enrichment path
+10. **Correctness & CI** — Raised coverage from 23% to 89% across 102 tests, and enforced the previously-unenforced toolchain in CI. Writing the missing tests surfaced two shipped bugs: a retry decorator that never retried, and an enricher that had been returning 401 for over a year after abuse.ch made authentication mandatory
 
 ### Skills Demonstrated
 
-`Python 3.12` · `Async Programming` · `API Integration` · `Pydantic v2` · `Abstract Base Classes` · `CLI Design` · `Test-Driven Development` · `Threat Intelligence` · `SOC Automation` · `Secrets Management` · `Jinja2 Templating`
+`Python 3.11/3.12` · `Async Programming` · `API Integration` · `Pydantic v2` · `Abstract Base Classes` · `mypy strict` · `pytest & Async Mocking` · `Test Coverage Engineering` · `CI/CD` · `STIX 2.1` · `Threat Intelligence` · `Vulnerability Management (KEV/EPSS)` · `SOC Automation` · `CLI Design` · `Secrets Management` · `Jinja2 Templating`
 
 ### Integration With Other Projects
 
@@ -771,7 +989,8 @@ This toolkit is the automation layer connecting the detection and analysis proje
 - **Input:** Suricata EVE JSON from the [Suricata IDS Rules](https://github.com/jesse12-21/suricata-ids-rules) project
 - **Output:** Enriched JSON compatible with the [Splunk SIEM Analysis](https://github.com/jesse12-21/splunk-siem-analysis) project
 - **Context:** Uses packet-level insights from the [Wireshark Threat Detection](https://github.com/jesse12-21/wireshark-threat-detection) project to inform IOC extraction
-- **Testing:** Can process traffic captured during the [Nmap Network Recon](https://github.com/jesse12-21/nmap-network-recon) project
+- **Input:** CIM-normalised scan output from the [Nmap Network Recon](https://github.com/jesse12-21/nmap-network-recon) project, via `enricher pipeline --source scan.json`
+- **Output:** STIX 2.1 bundles for import into MISP, OpenCTI, or any TAXII-compatible threat intelligence platform
 
 ---
 

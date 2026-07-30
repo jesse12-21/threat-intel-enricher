@@ -7,12 +7,13 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from enricher.ingesters.base import BaseIngester
-from enricher.models import Alert, IOC, IOCType
+from enricher.models import IOC, Alert, IOCType
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +126,7 @@ class SuricataIngester(BaseIngester):
 
         return Alert(
             id=f"suricata-{line_num}-{event.get('flow_id', line_num)}",
-            timestamp=datetime.fromisoformat(event["timestamp"].replace("Z", "+00:00")),
+            timestamp=datetime.fromisoformat(event["timestamp"]),
             signature=alert_info.get("signature", "Unknown"),
             severity=alert_info.get("severity", 3),
             category=alert_info.get("category", "Unknown"),

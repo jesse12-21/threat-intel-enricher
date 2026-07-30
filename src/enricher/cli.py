@@ -19,10 +19,16 @@ from rich.table import Table
 
 from enricher.config import Settings
 from enricher.correlator import correlate_by_attacker
-from enricher.enrichers import AbuseIPDBEnricher, OTXEnricher, URLhausEnricher
+from enricher.enrichers import (
+    AbuseIPDBEnricher,
+    CISAKEVEnricher,
+    EPSSEnricher,
+    OTXEnricher,
+    URLhausEnricher,
+)
 from enricher.enrichers.base import BaseEnricher
 from enricher.ingesters import SuricataIngester
-from enricher.models import Alert, IOC, RiskScore, Severity
+from enricher.models import IOC, Alert, RiskScore, Severity
 from enricher.pipeline import enrich_all_iocs
 from enricher.reporters import HTMLReporter, MarkdownReporter
 from enricher.scoring import score_many
@@ -45,8 +51,26 @@ logger = logging.getLogger("enricher")
 
 
 def _build_enrichers(session: aiohttp.ClientSession, settings: Settings) -> list[BaseEnricher]:
-    """Build the list of active enrichers based on available API keys."""
-    enrichers: list[BaseEnricher] = [URLhausEnricher(session)]  # No key needed
+    """Build the list of active enrichers based on available API keys.
+
+    KEV and EPSS are always included: both are public CVE datasets requiring
+    no key. Every other source needs one — including URLhaus, which stopped
+    accepting anonymous requests on 2025-06-30.
+    """
+    # Keyless CVE sources, always on.
+    enrichers: list[BaseEnricher] = [
+        CISAKEVEnricher(session),
+        EPSSEnricher(session),
+    ]
+
+    if settings.urlhaus_api_key:
+        enrichers.append(URLhausEnricher(session, settings.urlhaus_api_key))
+    else:
+        console.print(
+            "[yellow]⚠ URLhaus Auth-Key not configured — skipping. "
+            "abuse.ch has required authentication since 2025-06-30; "
+            "get a free key at https://auth.abuse.ch/[/yellow]"
+        )
 
     if settings.abuseipdb_api_key:
         enrichers.append(AbuseIPDBEnricher(session, settings.abuseipdb_api_key))

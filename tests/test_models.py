@@ -1,16 +1,16 @@
 """Tests for Pydantic data model validation."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
 
 from enricher.models import (
+    IOC,
     Alert,
     AttackCampaign,
     EnrichmentResult,
-    IOC,
     IOCType,
     RiskScore,
     Severity,
@@ -22,7 +22,7 @@ class TestIOC:
         ioc = IOC(
             value="8.8.8.8",
             type=IOCType.IP,
-            first_seen=datetime.now(timezone.utc),
+            first_seen=datetime.now(UTC),
             source_alert_id="alert-1",
         )
         assert ioc.value == "8.8.8.8"
@@ -33,13 +33,13 @@ class TestIOC:
             IOC(
                 value="",
                 type=IOCType.IP,
-                first_seen=datetime.now(timezone.utc),
+                first_seen=datetime.now(UTC),
                 source_alert_id="alert-1",
             )
 
     def test_ioc_is_hashable(self) -> None:
         """IOCs must be hashable for use as dict keys and in sets."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         a = IOC(value="1.2.3.4", type=IOCType.IP, first_seen=now, source_alert_id="a")
         b = IOC(value="1.2.3.4", type=IOCType.IP, first_seen=now, source_alert_id="b")
         # Same value+type → same hash (dedup works)
@@ -47,7 +47,7 @@ class TestIOC:
 
     def test_dedup_by_value_type(self) -> None:
         """Different IOC instances with same value+type collapse in a set."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         iocs = {
             IOC(value="1.1.1.1", type=IOCType.IP, first_seen=now, source_alert_id="a"),
             IOC(value="1.1.1.1", type=IOCType.IP, first_seen=now, source_alert_id="b"),
@@ -61,7 +61,7 @@ class TestAlert:
     def test_valid_alert(self) -> None:
         alert = Alert(
             id="test-1",
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             signature="ET MALWARE Test",
             severity=1,
             category="Malware",
@@ -74,7 +74,7 @@ class TestAlert:
         with pytest.raises(ValidationError):
             Alert(
                 id="test-1",
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 signature="Test",
                 severity=5,  # Out of range 1-3
                 category="Test",
@@ -88,7 +88,7 @@ class TestEnrichmentResult:
         ioc = IOC(
             value="1.2.3.4",
             type=IOCType.IP,
-            first_seen=datetime.now(timezone.utc),
+            first_seen=datetime.now(UTC),
             source_alert_id="a",
         )
         # Valid
@@ -108,7 +108,7 @@ class TestRiskScore:
         ioc = IOC(
             value="1.2.3.4",
             type=IOCType.IP,
-            first_seen=datetime.now(timezone.utc),
+            first_seen=datetime.now(UTC),
             source_alert_id="a",
         )
         high_score = RiskScore(
@@ -123,8 +123,8 @@ class TestRiskScore:
 
 class TestAttackCampaign:
     def test_duration_calculation(self) -> None:
-        start = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
-        end = datetime(2026, 1, 1, 12, 5, 30, tzinfo=timezone.utc)
+        start = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+        end = datetime(2026, 1, 1, 12, 5, 30, tzinfo=UTC)
         campaign = AttackCampaign(
             attacker_ip="1.2.3.4",
             start_time=start,

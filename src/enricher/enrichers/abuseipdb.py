@@ -8,12 +8,13 @@ API docs: https://docs.abuseipdb.com/
 from __future__ import annotations
 
 import logging
+from typing import Any, ClassVar
 
 import aiohttp
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from enricher.enrichers.base import BaseEnricher, EnrichmentError, RateLimitError
-from enricher.models import EnrichmentResult, IOC, IOCType
+from enricher.models import IOC, EnrichmentResult, IOCType
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ class AbuseIPDBEnricher(BaseEnricher):
     """Enricher for IP reputation via AbuseIPDB."""
 
     name = "abuseipdb"
-    supported_ioc_types = [IOCType.IP]
+    supported_ioc_types: ClassVar[list[IOCType]] = [IOCType.IP]
 
     def __init__(self, session: aiohttp.ClientSession, api_key: str) -> None:
         super().__init__(session)
@@ -37,10 +38,16 @@ class AbuseIPDBEnricher(BaseEnricher):
         retry=retry_if_exception_type(aiohttp.ClientError),
         reraise=True,
     )
-    async def enrich(self, ioc: IOC) -> EnrichmentResult | None:
-        if not self.supports(ioc):
-            return None
+    async def _fetch(self, ioc: IOC) -> dict[str, Any]:
+        """Perform the HTTP request, letting transport errors propagate.
 
+        The retry decorator belongs here rather than on enrich(). An earlier
+        version decorated enrich() while catching aiohttp.ClientError inside
+        it, so the exception never escaped for tenacity to observe and the
+        retry never fired — one attempt was made, not three. Splitting the
+        request out means transport failures propagate through the retry
+        logic, and enrich() only sees an error once all attempts are spent.
+        """
         headers = {
             "Key": self.api_key,
             "Accept": "application/json",
@@ -51,16 +58,23 @@ class AbuseIPDBEnricher(BaseEnricher):
             "verbose": "true",
         }
 
+        async with self.session.get(API_URL, headers=headers, params=params) as response:
+            if response.status == 429:
+                raise RateLimitError(f"AbuseIPDB rate limit hit for {ioc.value}")
+            if response.status == 401:
+                raise EnrichmentError("AbuseIPDB API key is invalid")
+            response.raise_for_status()
+            payload: dict[str, Any] = await response.json()
+            return payload
+
+    async def enrich(self, ioc: IOC) -> EnrichmentResult | None:
+        if not self.supports(ioc):
+            return None
+
         try:
-            async with self.session.get(API_URL, headers=headers, params=params) as response:
-                if response.status == 429:
-                    raise RateLimitError(f"AbuseIPDB rate limit hit for {ioc.value}")
-                if response.status == 401:
-                    raise EnrichmentError("AbuseIPDB API key is invalid")
-                response.raise_for_status()
-                payload = await response.json()
+            payload = await self._fetch(ioc)
         except aiohttp.ClientError as e:
-            logger.warning("AbuseIPDB request failed for %s: %s", ioc.value, e)
+            logger.warning("AbuseIPDB request failed for %s after retries: %s", ioc.value, e)
             return EnrichmentResult(
                 ioc=ioc,
                 source=self.name,

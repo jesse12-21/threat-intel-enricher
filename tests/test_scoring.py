@@ -1,11 +1,11 @@
 """Tests for the risk scoring algorithm."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
-from enricher.models import EnrichmentResult, IOC, IOCType, Severity
+from enricher.models import IOC, EnrichmentResult, IOCType, Severity
 from enricher.scoring import score_ioc, score_to_severity
 
 
@@ -14,7 +14,7 @@ def sample_ioc() -> IOC:
     return IOC(
         value="1.2.3.4",
         type=IOCType.IP,
-        first_seen=datetime.now(timezone.utc),
+        first_seen=datetime.now(UTC),
         source_alert_id="test-alert-1",
     )
 

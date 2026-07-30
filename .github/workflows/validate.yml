@@ -1,0 +1,156 @@
+name: Validate
+
+# The toolchain was already configured in pyproject.toml — ruff, mypy strict,
+# pytest with coverage — and nothing enforced it. `ruff check` reported 47
+# errors and coverage sat at 23% while the badge said "tests: pytest". CI is
+# what turns configured tooling into enforced tooling.
+on:
+  push:
+    branches: [main]
+    paths: ['src/**', 'tests/**', 'examples/**', 'pyproject.toml', '.github/workflows/validate.yml']
+  pull_request:
+    paths: ['src/**', 'tests/**', 'examples/**', 'pyproject.toml']
+  workflow_dispatch:
+
+env:
+  # Raising this is a deliberate act. Lowering it should require an explanation
+  # in the pull request that does it.
+  MIN_COVERAGE: "85"
+
+jobs:
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The package declares requires-python >=3.11, so both are tested.
+        # Claiming support for a version you never run is a claim, not a fact.
+        python-version: ['3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Verify required files are present in the checkout
+        run: |
+          # A .gitignore rule written for generated output can silently exclude
+          # test fixtures, which passes locally and fails on a clean clone.
+          # Checked explicitly so a missing file is named rather than surfacing
+          # as a confusing collection error.
+          missing=0
+          for f in examples/sample_suricata_eve.json pyproject.toml .env.example; do
+            if [ ! -f "$f" ]; then
+              echo "::error::$f is missing from the checkout — check .gitignore"
+              missing=1
+            else
+              echo "  present  $f"
+            fi
+          done
+          exit $missing
+
+      - name: Tests with coverage gate
+        run: |
+          pytest --cov=enricher --cov-report=term-missing \
+                 --cov-report=xml --cov-fail-under="${MIN_COVERAGE}"
+
+      - uses: actions/upload-artifact@v5
+        if: matrix.python-version == '3.12'
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          retention-days: 14
+
+  lint:
+    name: Lint and types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -e ".[dev]"
+
+      - name: ruff
+        run: ruff check src tests
+
+      - name: mypy (strict)
+        run: mypy src
+
+      - name: No unresolved placeholders
+        run: |
+          # pyproject.toml shipped with authors = [{ name = "Your Name" }] for
+          # the life of the project. Cheap to check, embarrassing to miss.
+          if grep -rn --include='*.py' --include='*.toml' --include='*.md' \
+             -e 'Your Name' -e 'you@example.com' -e 'TODO:' -e 'FIXME' . ; then
+            echo "::error::unresolved placeholder found"
+            exit 1
+          fi
+          echo "No placeholders found."
+
+  contract:
+    name: Interface contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -e ".[dev]"
+
+      - name: Every enricher, ingester, and reporter implements its base class
+        run: |
+          # The plugin architecture only holds if new components actually
+          # conform. A reporter with a differently-named method type-checks
+          # fine in isolation and breaks the CLI's format selection.
+          python - <<'PY'
+          import sys
+          from enricher import enrichers, ingesters, reporters
+          from enricher.enrichers.base import BaseEnricher
+          from enricher.ingesters.base import BaseIngester
+          from enricher.reporters.base import BaseReporter
+
+          fail = False
+          checks = [
+              (enrichers, BaseEnricher, "supported_ioc_types"),
+              (ingesters, BaseIngester, None),
+              (reporters, BaseReporter, "file_extension"),
+          ]
+          for module, base, required_attr in checks:
+              for name in module.__all__:
+                  obj = getattr(module, name)
+                  # Skip the base classes themselves and the exception types
+                  # that share these modules' __all__.
+                  if not isinstance(obj, type) or obj is base or issubclass(obj, Exception):
+                      continue
+                  if not issubclass(obj, base):
+                      print(f"::error::{name} does not subclass {base.__name__}")
+                      fail = True
+                      continue
+                  if not getattr(obj, "name", ""):
+                      print(f"::error::{name} has no 'name' attribute")
+                      fail = True
+                  if required_attr and not getattr(obj, required_attr, None):
+                      print(f"::error::{name} has no '{required_attr}'")
+                      fail = True
+                  print(f"  ok  {name} -> {base.__name__}")
+          sys.exit(1 if fail else 0)
+          PY
+
+      - name: CLI is invocable
+        run: |
+          enricher --help > /dev/null
+          enricher --version
+          for cmd in ingest pipeline correlate; do
+            enricher "$cmd" --help > /dev/null && echo "  ok  enricher $cmd"
+          done

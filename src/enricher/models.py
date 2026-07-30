@@ -20,6 +20,7 @@ class IOCType(str, Enum):
     URL = "url"
     HASH_MD5 = "md5"
     HASH_SHA256 = "sha256"
+    CVE = "cve"
 
 
 class Severity(str, Enum):

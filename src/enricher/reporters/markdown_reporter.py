@@ -6,14 +6,13 @@ where rendering is handled downstream.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from jinja2 import Environment, select_autoescape
 
 from enricher.models import AttackCampaign, RiskScore, Severity
 from enricher.reporters.base import BaseReporter
-
 
 SEVERITY_EMOJI = {
     Severity.CRITICAL: "🔴",
@@ -148,7 +147,7 @@ class MarkdownReporter(BaseReporter):
         campaigns: list[AttackCampaign],
     ) -> str:
         return self.template.render(
-            generated_at=datetime.now(timezone.utc),
+            generated_at=datetime.now(UTC),
             campaigns=campaigns,
             top_iocs=scores[:20],
             stats=_calculate_stats(scores, campaigns),
